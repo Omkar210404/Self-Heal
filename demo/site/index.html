@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Demo Shop</title>
+  <script src="/snippet/selfheal.min.js" data-endpoint="/api/errors" data-key="YOUR_PROJECT_KEY" data-release="demo-1.0.0" async></script>
+  <style>
+    body { margin: 0; font: 15px/1.5 system-ui, sans-serif; background: #0f1115; color: #e6e8eb; }
+    main { max-width: 640px; margin: 0 auto; padding: 32px 16px; }
+    h1 { margin: 0 0 4px; font-size: 24px; }
+    p { color: #9aa3ad; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 10px; margin: 20px 0; }
+    button { padding: 12px; border: 1px solid #2a2f37; border-radius: 8px; background: #171a20; color: inherit; font: inherit; cursor: pointer; text-align: left; }
+    button:hover { border-color: #4f8cff; }
+    button.main { background: #1d3b70; border-color: #4f8cff; grid-column: 1 / -1; }
+    #out { padding: 12px; border-radius: 8px; background: #171a20; min-height: 22px; font-family: ui-monospace, monospace; }
+    a { color: #7aa7ff; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Demo Shop</h1>
+    <p>Each button breaks something. The selfheal snippet reports it, and the owner gets a WhatsApp alert.</p>
+    <div class="grid">
+      <button id="checkout" class="main">🛒 Checkout (has a real bug: cart.js crashes without a coupon)</button>
+      <button id="js-error">Uncaught JS error</button>
+      <button id="promise">Unhandled promise rejection</button>
+      <button id="fetch500">fetch → HTTP 500</button>
+      <button id="fetch404">fetch → HTTP 404</button>
+      <button id="xhr">XHR → HTTP 500</button>
+      <button id="image">Broken image</button>
+    </div>
+    <div id="out"></div>
+    <p><a href="/dashboard">Open the selfheal dashboard →</a></p>
+  </main>
+  <script src="cart.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
