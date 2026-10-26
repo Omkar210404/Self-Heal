@@ -24,7 +24,8 @@ class Notifier {
     this.issues = issues;
     this.config = config;
     this.wa = config.whatsapp;
-    this.owner = config.whatsapp.ownerNumber;
+    this.normalize = (a) => (provider.normalizeAddress ? provider.normalizeAddress(a) : String(a || '').replace(/\D/g, ''));
+    this.owner = this.normalize(config.notifyChannel === 'email' ? config.email.owner : config.whatsapp.ownerNumber);
     this.logger = logger;
     this.clock = clock;
     this.commandHandler = null;
@@ -239,7 +240,7 @@ class Notifier {
   }
 
   async handleInbound(msg) {
-    const from = String(msg.from || '').replace(/\D/g, '');
+    const from = this.normalize(msg.from);
     const fromOwner = !!this.owner && from === this.owner;
     const id = this.insertMessage({
       direction: 'in',

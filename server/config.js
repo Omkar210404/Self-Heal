@@ -40,7 +40,7 @@ const list = (v, d = []) => {
 const digits = (v) => str(v).replace(/\D/g, '');
 
 // Values in .env.example look like these; treat them as "not configured".
-const PLACEHOLDER = /^(your[-_]|replace[-_]|choose[-_]|xxx)|X{6,}|^changeme$/i;
+const PLACEHOLDER = /^(your[-_]|replace[-_]|choose[-_]|xxx)|X{6,}|^changeme$|@example\.com$/i;
 const secret = (v) => {
   const s = str(v);
   return s && !PLACEHOLDER.test(s) ? s : '';
@@ -68,6 +68,17 @@ function loadConfig(env = process.env, opts = {}) {
     ingestRatePerMin: int(env.INGEST_RATE_LIMIT_PER_MIN, 120),
     ingestMaxBodyKb: int(env.INGEST_MAX_BODY_KB, 64),
     demoEnabled: mock || bool(env.DEMO_ENABLED),
+
+    // How the owner is notified: email (default for now), whatsapp, or mock (the fake phone in the dashboard).
+    notifyChannel: mock ? 'mock' : ['email', 'whatsapp', 'mock'].includes(str(env.NOTIFY_CHANNEL).toLowerCase()) ? str(env.NOTIFY_CHANNEL).toLowerCase() : 'email',
+    email: {
+      owner: PLACEHOLDER.test(str(env.OWNER_EMAIL)) ? '' : str(env.OWNER_EMAIL).toLowerCase(),
+      smtpHost: str(env.SMTP_HOST, 'smtp.gmail.com'),
+      smtpPort: int(env.SMTP_PORT, 465),
+      smtpUser: PLACEHOLDER.test(str(env.SMTP_USER)) ? '' : str(env.SMTP_USER),
+      smtpPass: secret(env.SMTP_PASS),
+      from: str(env.EMAIL_FROM),
+    },
 
     whatsapp: {
       token: secret(env.WHATSAPP_TOKEN),
@@ -143,14 +154,16 @@ function loadConfig(env = process.env, opts = {}) {
     },
   };
 
+  // No GitHub token: fixes go to a local git repo (seeded from demo/site), for trying it on one machine.
+  c.repoMode = !mock && (c.github.token || c.github.repo) ? 'github' : 'local';
+  if (c.notifyChannel === 'mock') applyMockChannel(c);
   if (mock) applyMockDefaults(c);
   return c;
 }
 
-/** Mock mode needs no real keys: generate throwaway values so everything works locally. */
-function applyMockDefaults(c) {
+/** The fake phone needs a fake owner and webhook secret. */
+function applyMockChannel(c) {
   const rand = () => crypto.randomBytes(16).toString('hex');
-  c.projectKey ||= 'mock-' + rand();
   c.whatsapp.token = 'mock-token';
   c.whatsapp.phoneNumberId = 'mock-phone-id';
   c.whatsapp.appSecret = 'mock-app-secret-' + rand();
@@ -158,6 +171,11 @@ function applyMockDefaults(c) {
   // Fake owner id for the simulated phone (not a phone number; mock only).
   c.whatsapp.ownerNumber = '10000000000001';
   c.whatsapp.templateName ||= 'selfheal_alert';
+}
+
+/** Mock mode needs no real keys: generate throwaway values so everything works locally. */
+function applyMockDefaults(c) {
+  c.projectKey ||= 'mock-' + crypto.randomBytes(16).toString('hex');
   c.ai.providers = ['mock-primary', 'mock-secondary'];
   c.github.repo = 'mock/demo-site';
   c.github.testCommand = c.github.testCommand || 'npm test';
@@ -171,13 +189,23 @@ function validateConfig(c, { configuredAiProviders = [] } = {}) {
   if (c.mock) return problems;
   const need = (ok, msg) => { if (!ok) problems.push(msg); };
   need(c.projectKey && c.projectKey.length >= 16, 'PROJECT_KEY must be set to a random string of at least 16 characters');
-  need(c.whatsapp.token, 'WHATSAPP_TOKEN is missing');
-  need(c.whatsapp.phoneNumberId, 'WHATSAPP_PHONE_NUMBER_ID is missing');
-  need(c.whatsapp.appSecret, 'WHATSAPP_APP_SECRET is missing (needed to verify webhook signatures)');
-  need(c.whatsapp.verifyToken, 'WHATSAPP_VERIFY_TOKEN is missing');
-  need(c.whatsapp.ownerNumber && c.whatsapp.ownerNumber.length >= 8, 'OWNER_WHATSAPP_NUMBER is missing (international format, digits only)');
-  need(c.github.token, 'GITHUB_TOKEN is missing');
-  need(/^[\w.-]+\/[\w.-]+$/.test(c.github.repo), 'GITHUB_REPO must look like owner/name');
+  if (c.notifyChannel === 'whatsapp') {
+    need(c.whatsapp.token, 'WHATSAPP_TOKEN is missing');
+    need(c.whatsapp.phoneNumberId, 'WHATSAPP_PHONE_NUMBER_ID is missing');
+    need(c.whatsapp.appSecret, 'WHATSAPP_APP_SECRET is missing (needed to verify webhook signatures)');
+    need(c.whatsapp.verifyToken, 'WHATSAPP_VERIFY_TOKEN is missing');
+    need(c.whatsapp.ownerNumber && c.whatsapp.ownerNumber.length >= 8, 'OWNER_WHATSAPP_NUMBER is missing (international format, digits only)');
+    need(c.whatsapp.templateName, 'WHATSAPP_TEMPLATE_NAME is missing (needed when the 24-hour window is closed)');
+  }
+  if (c.notifyChannel === 'email') {
+    need(/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(c.email.owner), 'OWNER_EMAIL is missing (where alerts are sent)');
+    need(c.email.smtpUser, 'SMTP_USER is missing (e.g. your Gmail address)');
+    need(c.email.smtpPass, 'SMTP_PASS is missing (for Gmail: an App Password, see README)');
+  }
+  if (c.repoMode === 'github') {
+    need(c.github.token, 'GITHUB_TOKEN is missing (or remove GITHUB_REPO to use a local test repo)');
+    need(/^[\w.-]+\/[\w.-]+$/.test(c.github.repo), 'GITHUB_REPO must look like owner/name');
+  }
   need(c.dashboard.password && c.dashboard.password.length >= 8, 'DASHBOARD_PASSWORD must be at least 8 characters');
   if (!configuredAiProviders.length) {
     problems.push(
@@ -185,7 +213,6 @@ function validateConfig(c, { configuredAiProviders = [] } = {}) {
         'Set GEMINI_API_KEY, ANTHROPIC_API_KEY, or OLLAMA_MODEL (with Ollama running).'
     );
   }
-  if (!c.whatsapp.templateName) problems.push('WHATSAPP_TEMPLATE_NAME is missing (needed when the 24-hour window is closed)');
   return problems;
 }
 
@@ -197,6 +224,9 @@ function secretValues(c) {
     c.whatsapp.appSecret,
     c.whatsapp.verifyToken,
     c.whatsapp.ownerNumber,
+    c.email.smtpPass,
+    c.email.owner,
+    c.email.smtpUser,
     c.ai.anthropicKey,
     c.ai.geminiKey,
     c.github.token,
@@ -222,6 +252,13 @@ function maskedConfig(c) {
       'Allowed origins': c.allowedOrigins.join(', '),
       'Rate limit / min / IP': c.ingestRatePerMin,
       'Max body KB': c.ingestMaxBodyKb,
+    },
+    Notifications: {
+      Channel: c.notifyChannel,
+      OWNER_EMAIL: c.email.owner ? c.email.owner.replace(/^(.).*(@.*)$/, '$1•••$2') : '(not set)',
+      SMTP: `${c.email.smtpHost}:${c.email.smtpPort}`,
+      SMTP_PASS: m(c.email.smtpPass),
+      'Fix target': c.repoMode === 'github' ? `GitHub ${c.github.repo}` : 'local test repo (no GitHub token set)',
     },
     WhatsApp: {
       WHATSAPP_TOKEN: m(c.whatsapp.token),

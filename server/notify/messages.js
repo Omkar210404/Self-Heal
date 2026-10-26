@@ -109,8 +109,9 @@ const merged = (issue, { sha }) => ({
     `🚀 *Merged the fix for issue #${issue.id}*${sha ? ` (${String(sha).slice(0, 7)})` : ''}.`,
     'Your site deploy (Vercel/Netlify/GitHub Actions) will take it live.',
     '',
-    `If anything looks wrong, reply *ROLLBACK ${issue.id}* to revert it.`,
+    `If anything looks wrong, tap Roll back (or reply *ROLLBACK ${issue.id}*) to revert it.`,
   ].join('\n'),
+  buttons: [{ id: `rollback:${issue.id}`, title: 'Roll back' }],
   summary: `Merged the fix for issue #${issue.id}`,
 });
 

@@ -19,7 +19,8 @@
     "hooks": "git config core.hooksPath .githooks"
   },
   "dependencies": {
-    "express": "^5.1.0"
+    "express": "^5.1.0",
+    "nodemailer": "^7.0.13"
   },
   "devDependencies": {
     "terser": "^5.36.0"

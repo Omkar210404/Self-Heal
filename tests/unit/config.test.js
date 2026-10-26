@@ -7,6 +7,7 @@ const { loadConfig, validateConfig, secretValues, maskedConfig, loadDotEnv } = r
 const { tmpDir, rmrf, FAKE_OWNER } = require('../helpers');
 
 const REAL = {
+  NOTIFY_CHANNEL: 'whatsapp',
   PROJECT_KEY: 'k'.repeat(24),
   WHATSAPP_TOKEN: 'wa-tok-'.padEnd(30, 'z'),
   WHATSAPP_PHONE_NUMBER_ID: 'pid-1',
@@ -42,7 +43,11 @@ test('placeholder values from .env.example count as not configured', () => {
 });
 
 test('validateConfig lists every missing piece in real mode', () => {
-  const problems = validateConfig(loadConfig({}), { configuredAiProviders: [] });
+  const emailProblems = validateConfig(loadConfig({}), { configuredAiProviders: [] }).join('\n');
+  for (const k of ['OWNER_EMAIL', 'SMTP_USER', 'SMTP_PASS', 'PROJECT_KEY', 'DASHBOARD_PASSWORD']) assert.ok(emailProblems.includes(k), k);
+  assert.ok(!emailProblems.includes('GITHUB_TOKEN'), 'no GitHub token = local test repo');
+  assert.equal(loadConfig({}).repoMode, 'local');
+  const problems = validateConfig(loadConfig({ NOTIFY_CHANNEL: 'whatsapp', GITHUB_REPO: 'not-a-repo' }), { configuredAiProviders: [] });
   const text = problems.join('\n');
   for (const k of ['PROJECT_KEY', 'WHATSAPP_TOKEN', 'WHATSAPP_APP_SECRET', 'OWNER_WHATSAPP_NUMBER', 'GITHUB_TOKEN', 'GITHUB_REPO', 'DASHBOARD_PASSWORD', 'No AI provider']) {
     assert.ok(text.includes(k), `mentions ${k}`);

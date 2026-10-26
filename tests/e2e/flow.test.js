@@ -17,11 +17,11 @@ const SNIPPET = fs.readFileSync(path.join(__dirname, '../../snippet/dist/selfhea
 let unhandled = [];
 process.on('unhandledRejection', (e) => unhandled.push(e));
 
-async function boot(env = {}, mockModes = {}) {
+async function boot(env = {}, mockModes = {}, { real = false, emailTransport } = {}) {
   const dir = tmpDir('selfheal-e2e-');
-  const config = loadConfig({ DATA_DIR: dir, QUEUE_POLL_MS: '20', QUEUE_BACKOFF_MS: '30', WHATSAPP_SEND_RETRIES: '2', SWEEP_INTERVAL_MS: '600000', ...env }, { mock: true });
+  const config = loadConfig({ DATA_DIR: dir, QUEUE_POLL_MS: '20', QUEUE_BACKOFF_MS: '30', WHATSAPP_SEND_RETRIES: '2', SWEEP_INTERVAL_MS: '600000', ...env }, real ? {} : { mock: true });
   const logger = memLogger();
-  const app = await createApp({ config, logger, mockModes });
+  const app = await createApp({ config, logger, mockModes, emailTransport });
   const port = await app.start({ port: 0, host: '127.0.0.1' });
   config.publicUrl = `http://127.0.0.1:${port}`;
   const base = config.publicUrl;
@@ -258,8 +258,45 @@ test('failure: daily AI cap reached → fixing paused, owner told, job deferred 
 test('startup fails clearly in real mode when nothing is configured', async () => {
   const dir = tmpDir();
   try {
-    await assert.rejects(createApp({ config: loadConfig({ DATA_DIR: dir }), logger: memLogger() }), (e) => /No AI provider is configured/.test(e.message) && /GITHUB_TOKEN/.test(e.message));
+    await assert.rejects(createApp({ config: loadConfig({ DATA_DIR: dir }), logger: memLogger() }), (e) => /No AI provider is configured/.test(e.message) && /OWNER_EMAIL/.test(e.message));
   } finally {
     rmrf(dir);
+  }
+});
+
+test('email channel (real mode, local repo): signed links → fix → merge → roll back', { timeout: 120000 }, async () => {
+  const mails = [];
+  const transport = { sendMail: async (m) => { mails.push(m); return { messageId: `<m${mails.length}@test>` }; } };
+  const env = {
+    NOTIFY_CHANNEL: 'email', OWNER_EMAIL: 'owner@test.invalid', SMTP_USER: 'bot@test.invalid', SMTP_PASS: 'test-smtp-pass',
+    PROJECT_KEY: 'test-project-key-0123456789', DASHBOARD_PASSWORD: 'test-dashboard-pw', AI_PROVIDERS: 'mock-primary', DEMO_ENABLED: 'true',
+  };
+  const t = await boot(env, { 'mock-primary': 'right' }, { real: true, emailTransport: transport });
+  const link = (title, mail) => mail.text.split('\n').find((l) => l.startsWith(`${title}: `))?.slice(title.length + 2);
+  const click = async (url) => {
+    const u = url.replace(/^https?:\/\/[^/]+/, t.base); // links use PUBLIC_URL; the test server runs on a random port
+    assert.equal((await fetch(u)).status, 200, 'GET only shows a confirm page');
+    const q = new URL(u).searchParams;
+    const r = await fetch(`${t.base}/email/action`, { method: 'POST', body: new URLSearchParams({ c: q.get('c'), e: q.get('e'), s: q.get('s') }) });
+    assert.equal(r.status, 200);
+  };
+  try {
+    const issue = await t.siteError();
+    const alert = await t.waitFor(() => mails.find((m) => /New error/.test(m.subject)), 'alert email');
+    assert.equal(alert.to, 'owner@test.invalid');
+    const fixUrl = link('Fix it', alert);
+    assert.ok(fixUrl);
+    assert.equal(t.issue(issue.id).status, 'alerted', 'GET alone did nothing yet');
+    const forged = fixUrl.replace(/s=[0-9a-f]+/, 's=' + '0'.repeat(32)).replace(/^https?:\/\/[^/]+/, t.base);
+    assert.equal((await fetch(forged)).status, 403);
+    await click(fixUrl);
+    const ready = await t.waitFor(() => mails.find((m) => /Fix ready/.test(m.subject)), 'fix ready email', 60000);
+    await click(link('Merge', ready));
+    const merged = await t.waitFor(() => mails.find((m) => /Merged the fix/.test(m.subject)), 'merged email', 60000);
+    assert.equal(t.issue(issue.id).status, 'merged');
+    await click(link('Roll back', merged));
+    await t.waitFor(() => t.issue(issue.id).status === 'rolled_back', 'rolled back', 60000);
+  } finally {
+    await t.close();
   }
 });

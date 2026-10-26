@@ -73,8 +73,20 @@ class GeminiProvider {
     Object.assign(this, { name: 'gemini', apiKey, model, baseUrl, timeoutMs, fetch });
   }
   isConfigured() { return !!this.apiKey; }
-  async complete({ system, messages, maxTokens = 4096 }) {
-    const j = await postJson(this.fetch, this.name, `${this.baseUrl}/v1beta/models/${encodeURIComponent(this.model)}:generateContent`, { 'x-goog-api-key': this.apiKey }, {
+  /** GEMINI_MODEL may list backups ("a,b"): the next model is tried when one is overloaded, rate limited or retired. */
+  async complete(req) {
+    const models = String(this.model).split(',').map((m) => m.trim()).filter(Boolean);
+    for (let i = 0; ; i++) {
+      try {
+        return await this.completeWith(models[i], req);
+      } catch (err) {
+        if (i + 1 >= models.length || !['unavailable', 'rate_limit', 'bad_request'].includes(err.kind)) throw err;
+      }
+    }
+  }
+
+  async completeWith(model, { system, messages, maxTokens = 4096 }) {
+    const j = await postJson(this.fetch, this.name, `${this.baseUrl}/v1beta/models/${encodeURIComponent(model)}:generateContent`, { 'x-goog-api-key': this.apiKey }, {
       systemInstruction: { parts: [{ text: system }] },
       contents: messages.map((m) => ({ role: m.role === 'assistant' ? 'model' : 'user', parts: [{ text: m.content }] })),
       generationConfig: { responseMimeType: 'application/json', maxOutputTokens: maxTokens, temperature: 0.2 },
@@ -82,7 +94,7 @@ class GeminiProvider {
     if (j?.promptFeedback?.blockReason) throw new AIProviderError(this.name, 'bad_request', `blocked: ${j.promptFeedback.blockReason}`);
     const text = (j?.candidates?.[0]?.content?.parts || []).map((p) => p.text || '').join('');
     if (!text) throw new AIProviderError(this.name, 'unavailable', `empty response (${j?.candidates?.[0]?.finishReason || 'no candidates'})`);
-    return { text, model: this.model, inputTokens: j.usageMetadata?.promptTokenCount || 0, outputTokens: j.usageMetadata?.candidatesTokenCount || 0 };
+    return { text, model, inputTokens: j.usageMetadata?.promptTokenCount || 0, outputTokens: j.usageMetadata?.candidatesTokenCount || 0 };
   }
 }
 

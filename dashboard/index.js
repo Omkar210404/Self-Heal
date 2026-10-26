@@ -59,7 +59,7 @@ function createDashboard(services) {
   const page = (req, title, body) => `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${esc(title)} · selfheal</title><style>${CSS}</style></head><body>
 <header><b>🩹 selfheal</b>${config.mock ? '<span class="mock">MOCK MODE</span>' : ''}<nav><a href="/dashboard">Issues</a><a href="/dashboard/settings">Settings</a>
-${config.mock ? '<a href="/dashboard/phone">📱 Fake phone</a><a href="/demo/" target="_blank">Demo site</a>' : ''}</nav>
+${provider.buildInbound ? '<a href="/dashboard/phone">📱 Fake phone</a>' : ''}${config.demoEnabled ? '<a href="/demo/" target="_blank">Demo site</a>' : ''}</nav>
 ${authed(req) ? form(req, '/dashboard/logout', '<button>Log out</button>') : ''}</header><main>${body}</main></body></html>`;
 
   r.use(express.urlencoded({ extended: false, limit: '20kb' }));
@@ -148,7 +148,7 @@ ${authed(req) ? form(req, '/dashboard/logout', '<button>Log out</button>') : ''}
     res.redirect('/dashboard/settings?sent=1');
   });
 
-  if (config.mock) {
+  if (provider.buildInbound) {
     const chat = (req) => notifier.recent(80).filter((m) => m.status !== 'ignored').map((m) => {
       const p = JSON.parse(m.payload);
       if (m.direction === 'in') return `<div class="msg in">${esc(p.buttonId ? `[tapped] ${p.buttonId}` : p.text)}<div class="meta">${when(m.created_at)}</div></div>`;
@@ -185,6 +185,9 @@ ${authed(req) ? form(req, '/dashboard/logout', '<button>Log out</button>') : ''}
       res.redirect('/dashboard/phone');
     });
 
+  }
+
+  if (host.pr) {
     r.get('/mock/prs/:n', async (req, res) => {
       const pr = host.pr(Number(req.params.n));
       if (!pr) return res.status(404).send(page(req, 'PR', '<h1>PR not found</h1>'));

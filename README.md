@@ -2,7 +2,7 @@
 
 **Add your own API keys, GitHub token, and WhatsApp number in a `.env` file (copy `.env.example`). No real credentials are included in this repo.**
 
-> 🚧 **Status: work in progress.** The full flow is tested in mock mode; live testing with real WhatsApp, AI and GitHub accounts is under way.
+> 🚧 **Status: work in progress.** Alerts and approvals currently go by **email**. **WhatsApp is coming soon**: the code is built and tested in mock mode, but live use needs a Meta business setup that hasn't been done yet. The full flow is tested in mock mode.
 
 selfheal catches errors on your live website, asks you on WhatsApp whether to fix them, lets an AI write the fix on a separate branch, runs your tests, and merges only after you approve a second time.
 
@@ -60,7 +60,20 @@ npm start
 
 At startup selfheal checks the config and lists anything missing, e.g. `No AI provider is configured`.
 
-### 1. WhatsApp Cloud API (Meta)
+**Quickest real trial (one machine):** set only an AI key (step 3) and `NOTIFY_CHANNEL=mock`, and leave `GITHUB_TOKEN`/`GITHUB_REPO` empty. Real AI fixes the demo bug in a local test repo, and you approve on the fake phone in the dashboard.
+
+### 0. Email (current channel)
+
+`NOTIFY_CHANNEL=email` (the default). Each alert email has buttons (Fix it / Ignore, Merge / Reject, Roll back). They open a confirm page on your selfheal server, signed so only links selfheal sent will work.
+
+With Gmail:
+1. Turn on 2-Step Verification for the Google account that will send the emails.
+2. Create an App Password at <https://myaccount.google.com/apppasswords>.
+3. Set `SMTP_USER` to that Gmail address, `SMTP_PASS` to the 16-character App Password, and `OWNER_EMAIL` to where alerts should go (it can be the same address).
+
+The buttons link to `PUBLIC_URL`, so with `http://localhost:3000` they only work on the machine running selfheal. Use your ngrok URL to approve from your phone.
+
+### 1. WhatsApp Cloud API (Meta), coming soon (`NOTIFY_CHANNEL=whatsapp`)
 
 1. Go to <https://developers.facebook.com/apps> → **Create app** → type **Business** → add the **WhatsApp** product.
 2. **WhatsApp → API Setup**:
@@ -113,7 +126,7 @@ Cost cap: `AI_DAILY_MAX_COST_USD` and `AI_DAILY_MAX_CALLS` (UTC day). Costs are 
 - **Repository access**: only your site's repository.
 - **Permissions**: **Contents: Read and write**, **Pull requests: Read and write** (Metadata: read is added automatically).
 
-Set `GITHUB_TOKEN` and `GITHUB_REPO=owner/name`. Set `TEST_COMMAND` (default `npm test`; leave it empty if the repo has no tests) and, if tests need dependencies, `INSTALL_COMMAND=npm ci`.
+Set `GITHUB_TOKEN` and `GITHUB_REPO=owner/name`. With both empty, selfheal uses a local test repo seeded from `demo/site` (in `data/`), and `/demo` is served from its main branch, so you can watch a merge "deploy". Set `TEST_COMMAND` (default `npm test`; leave it empty if the repo has no tests) and, if tests need dependencies, `INSTALL_COMMAND=npm ci`.
 
 ### 5. Install the snippet on your site
 

@@ -12,6 +12,7 @@ const { Notifier } = require('./notify/notifier');
 const { WhatsAppCloudProvider } = require('./notify/whatsapp-cloud');
 const { MockWhatsAppProvider } = require('./notify/mock-whatsapp');
 const { createWebhookRouter } = require('./notify/webhook');
+const { EmailProvider, createEmailRouter } = require('./notify/email');
 const { AIRouter, UsageTracker, createProviders } = require('./ai');
 const { GitHubHost, MockGitHubHost, TokenAuth } = require('./repo');
 const { Workflow } = require('./workflow');
@@ -24,7 +25,7 @@ const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; ch
  * Builds every service and the Express app. Nothing listens until start().
  * @param {{config, logger?, fetch?, mockModes?: object}} opts
  */
-async function createApp({ config, logger, fetch = globalThis.fetch, mockModes = {} }) {
+async function createApp({ config, logger, fetch = globalThis.fetch, mockModes = {}, emailTransport }) {
   const secrets = secretValues(config);
   logger ||= createLogger({ level: config.logLevel, secrets });
   const clock = { now: () => Date.now() };
@@ -42,13 +43,14 @@ async function createApp({ config, logger, fetch = globalThis.fetch, mockModes =
   const issues = new IssueService({ db, clock, logger });
   const queue = new JobQueue({ db, logger, clock, pollMs: config.queue.pollMs, backoffMs: config.queue.backoffMs });
   const w = config.whatsapp;
-  const provider = config.mock
-    ? new MockWhatsAppProvider({ appSecret: w.appSecret, verifyToken: w.verifyToken })
-    : new WhatsAppCloudProvider({ token: w.token, phoneNumberId: w.phoneNumberId, appSecret: w.appSecret, verifyToken: w.verifyToken, apiVersion: w.apiVersion, graphUrl: w.graphUrl, fetch });
+  const provider =
+    config.notifyChannel === 'email' ? new EmailProvider({ config, transport: emailTransport })
+      : config.notifyChannel === 'mock' ? new MockWhatsAppProvider({ appSecret: w.appSecret, verifyToken: w.verifyToken })
+        : new WhatsAppCloudProvider({ token: w.token, phoneNumberId: w.phoneNumberId, appSecret: w.appSecret, verifyToken: w.verifyToken, apiVersion: w.apiVersion, graphUrl: w.graphUrl, fetch });
   const notifier = new Notifier({ db, queue, provider, issues, config, logger, clock });
   const usage = new UsageTracker({ db, config, clock });
   const router = new AIRouter({ providers, usage, logger, malformedRetries: config.ai.malformedRetries, maxTokens: config.ai.maxOutputTokens });
-  const host = config.mock
+  const host = config.repoMode === 'local'
     ? new MockGitHubHost({ dataDir: config.dataDir, db, seedDir: path.join(ROOT, 'demo', 'site'), publicUrl: config.publicUrl })
     : new GitHubHost({ repo: config.github.repo, apiUrl: config.github.apiUrl, auth: new TokenAuth(config.github.token), fetch, pollMs: config.github.mergeablePollMs, pollTries: config.github.mergeablePollTries });
   if (host.init) await host.init();
@@ -64,7 +66,8 @@ async function createApp({ config, logger, fetch = globalThis.fetch, mockModes =
     res.sendFile(path.join(ROOT, 'snippet', 'dist', 'selfheal.min.js'));
   });
   app.use(createIngestRouter({ config, issues, logger, clock, onIssue: (issue) => workflow.onNewIssue(issue) }));
-  app.use(createWebhookRouter({ provider, notifier, logger }));
+  if (config.notifyChannel === 'email') app.use(createEmailRouter({ provider, notifier, config }));
+  else app.use(createWebhookRouter({ provider, notifier, logger }));
   app.use('/dashboard', createDashboard(services));
   if (config.demoEnabled) app.use('/demo', demoRouter(services));
   app.get('/', (req, res) => res.redirect(config.demoEnabled ? '/demo/' : '/dashboard'));
@@ -106,7 +109,7 @@ function demoRouter({ config, host }) {
   r.get('/*splat', async (req, res, next) => {
     try {
       const rel = (req.params.splat?.join?.('/') || '').replace(/\.\./g, '') || 'index.html';
-      const buf = config.mock && host.readFile ? await host.readFile('main', rel) : readSafe(path.join(ROOT, 'demo', 'site', rel));
+      const buf = host.readFile ? await host.readFile('main', rel) : readSafe(path.join(ROOT, 'demo', 'site', rel));
       if (!buf) return res.status(404).send('Not found');
       let body = buf;
       if (rel === 'index.html') body = buf.toString('utf8').replace('YOUR_PROJECT_KEY', config.projectKey);
