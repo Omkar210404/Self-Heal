@@ -89,9 +89,14 @@ class GeminiProvider {
     const j = await postJson(this.fetch, this.name, `${this.baseUrl}/v1beta/models/${encodeURIComponent(model)}:generateContent`, { 'x-goog-api-key': this.apiKey }, {
       systemInstruction: { parts: [{ text: system }] },
       contents: messages.map((m) => ({ role: m.role === 'assistant' ? 'model' : 'user', parts: [{ text: m.content }] })),
-      generationConfig: { responseMimeType: 'application/json', maxOutputTokens: maxTokens, temperature: 0.2 },
+      // Thinking tokens count against maxOutputTokens: keep thinking low and leave room for the answer.
+      generationConfig: {
+        responseMimeType: 'application/json', maxOutputTokens: Math.max(maxTokens, 16384), temperature: 0.2,
+        ...(/gemini-3/.test(model) ? { thinkingConfig: { thinkingLevel: 'low' } } : {}),
+      },
     }, this.timeoutMs);
     if (j?.promptFeedback?.blockReason) throw new AIProviderError(this.name, 'bad_request', `blocked: ${j.promptFeedback.blockReason}`);
+    if (j?.candidates?.[0]?.finishReason === 'MAX_TOKENS') throw new AIProviderError(this.name, 'bad_request', `${model} ran out of output tokens before finishing its answer`);
     const text = (j?.candidates?.[0]?.content?.parts || []).map((p) => p.text || '').join('');
     if (!text) throw new AIProviderError(this.name, 'unavailable', `empty response (${j?.candidates?.[0]?.finishReason || 'no candidates'})`);
     return { text, model, inputTokens: j.usageMetadata?.promptTokenCount || 0, outputTokens: j.usageMetadata?.candidatesTokenCount || 0 };

@@ -89,7 +89,11 @@ async function createApp({ config, logger, fetch = globalThis.fetch, mockModes =
       workflow.sweep();
       sweepTimer = setInterval(() => { try { workflow.sweep(); } catch (err) { logger.error('sweep failed', err); } }, config.queue.sweepMs);
       sweepTimer.unref();
-      await new Promise((resolve, reject) => { server = app.listen(port, bind, resolve).on('error', reject); });
+      server = require('node:http').createServer(app);
+      await new Promise((resolve, reject) => {
+        server.once('error', (err) => reject(err.code === 'EADDRINUSE' ? new Error(`Port ${port} is already in use: stop the other server or set PORT in .env`) : err));
+        server.listen(port, bind, resolve);
+      });
       return server.address().port;
     },
     async stop() {

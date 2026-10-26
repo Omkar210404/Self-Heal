@@ -19,7 +19,13 @@ async function main() {
     console.error(err.configProblems ? err.message : logger.mask(String(err.stack || err)));
     process.exit(1);
   }
-  const port = await app.start();
+  let port;
+  try {
+    port = await app.start();
+  } catch (err) {
+    logger.error(err.message);
+    process.exit(1);
+  }
   const base = `http://localhost:${port}`;
   logger.info(`selfheal ${config.mock ? 'MOCK MODE ' : ''}listening on ${base}`);
   if (config.mock) {
