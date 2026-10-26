@@ -2,6 +2,8 @@
 
 **Add your own API keys, GitHub token, and WhatsApp number in a `.env` file (copy `.env.example`). No real credentials are included in this repo.**
 
+> 🚧 **Status: work in progress.** The full flow is tested in mock mode; live testing with real WhatsApp, AI and GitHub accounts is under way.
+
 selfheal catches errors on your live website, asks you on WhatsApp whether to fix them, lets an AI write the fix on a separate branch, runs your tests, and merges only after you approve a second time.
 
 ```
