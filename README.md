@@ -26,6 +26,22 @@ selfheal catches errors on your live website, asks you on WhatsApp whether to fi
  Any failure at any step → the issue is marked (fix_failed, merge_conflict, ...) and you get a WhatsApp message saying what failed and why.
 ```
 
+## Screenshots
+
+Taken in mock mode (`npm run mock`). The "phone" is the built-in simulator, and real alerts look the same by email or WhatsApp.
+
+| 1. An error happens: you get an alert | 2. The AI's fix passed the tests on its 2nd attempt |
+|---|---|
+| <img src="docs/screenshots/phone-alert.png" width="360" alt="Alert with Fix it and Ignore buttons"> | <img src="docs/screenshots/phone-fix-ready.png" width="360" alt="Fix ready with root cause, files, tests, PR link and Merge/Reject buttons"> |
+
+**3. Issue page: AI diagnosis, every attempt's diff and test result, and full history**
+
+<img src="docs/screenshots/issue-detail.png" alt="Issue detail page with AI diagnosis and fix attempts">
+
+**4. Issues list**
+
+<img src="docs/screenshots/issues.png" alt="Issues list with statuses">
+
 ## Features
 
 - **Snippet** (`snippet/`): one script tag, no dependencies, 3.8 KB minified. Catches uncaught errors, unhandled promise rejections, failed fetch/XHR (4xx/5xx and network errors) and failed resource loads. Dedupes and batches in the browser, sends with `sendBeacon`, and everything runs inside try/catch so it can never break the page.
