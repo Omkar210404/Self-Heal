@@ -39,7 +39,8 @@ input,button,select{font:inherit;color:inherit;background:#0b0f14;border:1px sol
 @media (max-width:600px){td,th{padding:6px 4px}.hide-sm{display:none}}`;
 
 function createDashboard(services) {
-  const { config, issues, notifier, usage, router, queue, provider, host, db } = services;
+  const { config, issues, notifier, usage, router, queue, provider, host, db, workflow } = services;
+  const ACTIONS = { new: [['fix', '🛠️ Fix it'], ['ignore', 'Ignore']], alerted: [['fix', '🛠️ Fix it'], ['ignore', 'Ignore']], fix_ready: [['merge', '✅ Merge'], ['reject', 'Reject']], merged: [['rollback', '⏪ Roll back']], fix_failed: [['fix', '🔁 Try again']], rejected: [['fix', '🔁 Try a new fix']], ignored: [['fix', '🛠️ Fix it']], rolled_back: [['fix', '🔁 Try a new fix']] };
   const r = express.Router();
   const secret = config.dashboard.sessionSecret;
   const hmac = (s) => crypto.createHmac('sha256', secret).update(s).digest('hex');
@@ -114,6 +115,8 @@ ${authed(req) ? form(req, '/dashboard/logout', '<button>Log out</button>') : ''}
     const occ = issues.occurrences(i.id).slice(0, 5);
     const kv = (rows) => `<table class="kv">${rows.filter(([, v]) => v !== '' && v != null).map(([k, v]) => `<tr><td>${k}</td><td>${v}</td></tr>`).join('')}</table>`;
     res.send(page(req, `Issue #${i.id}`, `<h1>#${i.id} ${esc(i.title)} ${badge(i.status)}</h1>
+      ${req.query.done ? '<div class="panel">✅ Done. The result also goes to your phone/email; refresh in a few seconds.</div>' : ''}
+      ${(ACTIONS[i.status] || []).length ? `<div class="panel">${form(req, `/dashboard/issues/${i.id}/action`, (ACTIONS[i.status] || []).map(([a, l]) => `<button name="action" value="${a}">${l}</button>`).join(' '))}</div>` : ''}
       ${i.status_reason ? `<div class="panel ${i.status === 'fix_failed' ? 'warn' : ''}">${esc(i.status_reason)}</div>` : ''}
       <div class="grid"><div class="panel">${kv([['Kind', esc(i.kind)], ['Where', esc(`${i.file || '?'}${i.line ? ':' + i.line : ''}`)], ['Count', i.count], ['First seen', when(i.first_seen)], ['Last seen', when(i.last_seen)], ['Page', esc(i.page_url)], ['Release', esc(i.release)], ['Browser', esc(i.user_agent)]])}</div>
       <div class="panel">${kv([['AI provider', esc(i.ai_provider)], ['Attempts', i.attempts || ''], ['Tests', i.tested == null ? '' : i.tested ? `✅ ${esc(i.test_summary)}` : '⚠️ UNTESTED'], ['Branch', esc(i.branch)], ['Pull request', i.pr_url ? `<a href="${esc(i.pr_url)}" target="_blank">#${i.pr_number}</a>` : ''], ['Merge commit', esc(i.merge_sha?.slice(0, 10))], ['Revert PR', i.revert_pr_url ? `<a href="${esc(i.revert_pr_url)}" target="_blank">#${i.revert_pr_number}</a>` : ''], ['Files', files.map((f) => `${esc(f.path)} (+${f.added} −${f.removed})`).join('<br>')]])}</div></div>
@@ -124,6 +127,21 @@ ${authed(req) ? form(req, '/dashboard/logout', '<button>Log out</button>') : ''}
       <h2>History</h2><div class="panel"><table>${issues.events(i.id).map((e) => `<tr><td class="muted" style="white-space:nowrap">${when(e.created_at)}</td><td>${e.to_status ? `${badge(e.from_status || 'new')} → ${badge(e.to_status)}` : esc(e.type)}</td><td class="muted">${esc(e.detail || '')}</td></tr>`).join('')}</table></div>
       <h2>WhatsApp messages</h2><div class="panel"><table>${notifier.forIssue(i.id).map((m) => `<tr><td class="muted" style="white-space:nowrap">${when(m.created_at)}</td><td>${esc(m.kind)}</td><td>${esc(m.status)}</td><td class="muted">${esc(m.error || '')}</td></tr>`).join('') || '<tr><td class="muted">None</td></tr>'}</table></div>
       <h2>Recent occurrences</h2><div class="panel"><table>${occ.map((o) => `<tr><td class="muted" style="white-space:nowrap">${when(o.created_at)}</td><td>${esc(o.data.pageUrl)}</td><td class="muted hide-sm">${esc(o.data.userAgent)}</td></tr>`).join('')}</table></div>`));
+  });
+
+  // Same commands as the WhatsApp/email buttons, for when you are at the dashboard anyway.
+  r.post('/issues/:id/action', async (req, res, next) => {
+    try {
+      const id = Number(req.params.id);
+      const action = String(req.body.action || '');
+      if (!['fix', 'ignore', 'merge', 'reject', 'rollback'].includes(action)) return res.status(400).send('Unknown action');
+      issues.addEvent(id, 'dashboard_action', { action });
+      const reply = await workflow.handleCommand({ action, id, raw: action });
+      if (reply) notifier.send({ kind: 'reply', issueId: id, message: reply });
+      res.redirect(`/dashboard/issues/${id}?done=1`);
+    } catch (err) {
+      next(err);
+    }
   });
 
   r.get('/settings', (req, res) => {

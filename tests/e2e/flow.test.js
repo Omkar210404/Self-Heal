@@ -131,7 +131,7 @@ test('happy path: error → issue → alert → approve → fail → retry → p
     const login = await fetch(`${t.base}/dashboard/login`, { method: 'POST', body: new URLSearchParams({ password: t.config.dashboard.password }), redirect: 'manual' });
     const cookie = login.headers.get('set-cookie').split(';')[0];
     const detail = await (await fetch(`${t.base}/dashboard/issues/${issue.id}`, { headers: { cookie } })).text();
-    for (const s of ['AI diagnosis', 'Fix attempts', 'rolled back', 'History']) assert.ok(detail.includes(s), s);
+    for (const s of ['AI diagnosis', 'Fix attempts', 'rolled back', 'History', 'Try a new fix']) assert.ok(detail.includes(s), s);
     const settings = await (await fetch(`${t.base}/dashboard/settings`, { headers: { cookie } })).text();
     for (const secret of [t.config.projectKey, t.config.whatsapp.appSecret, t.config.dashboard.password]) assert.ok(!settings.includes(secret), 'secret masked');
     const csrfLess = await fetch(`${t.base}/dashboard/settings/test-message`, { method: 'POST', headers: { cookie }, body: new URLSearchParams({}) });
