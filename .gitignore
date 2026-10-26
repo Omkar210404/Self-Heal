@@ -1,0 +1,21 @@
+# Secrets: never commit these
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Runtime data (SQLite database, mock repo, temp clones)
+data/
+*.db
+*.db-wal
+*.db-shm
+
+# Dependencies and tooling
+node_modules/
+npm-debug.log*
+coverage/
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

@@ -1,0 +1,4 @@
+#!/bin/sh
+# Blocks the commit if staged files or git history contain phone numbers, tokens or keys.
+# Enable once per clone with: npm run hooks
+node scripts/scan-secrets.js || exit 1

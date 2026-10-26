@@ -1,0 +1,27 @@
+{
+  "name": "selfheal",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Self-healing for websites: catch live errors, ask the owner on WhatsApp, let AI fix them on a branch, run tests, merge on approval.",
+  "license": "MIT",
+  "engines": {
+    "node": ">=22.13"
+  },
+  "scripts": {
+    "start": "node --disable-warning=ExperimentalWarning server/index.js",
+    "mock": "node --disable-warning=ExperimentalWarning server/index.js --mock",
+    "build:snippet": "node snippet/build.js",
+    "test": "node --disable-warning=ExperimentalWarning --test --test-concurrency=1 \"tests/**/*.test.js\"",
+    "test:unit": "node --disable-warning=ExperimentalWarning --test --test-concurrency=1 \"tests/unit/**/*.test.js\"",
+    "test:e2e": "node --disable-warning=ExperimentalWarning --test --test-concurrency=1 \"tests/e2e/**/*.test.js\"",
+    "scan": "node scripts/scan-secrets.js",
+    "scan:worktree": "node scripts/scan-secrets.js --worktree",
+    "hooks": "git config core.hooksPath .githooks"
+  },
+  "dependencies": {
+    "express": "^5.1.0"
+  },
+  "devDependencies": {
+    "terser": "^5.36.0"
+  }
+}
